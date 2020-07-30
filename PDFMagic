@@ -1,0 +1,170 @@
+from PyPDF2 import PdfFileWriter, PdfFileReader
+from PyPDF2.pdf import RectangleObject
+from pdfminer.pdfdocument import PDFDocument
+from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfparser import PDFParser
+from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+from pdfminer.converter import PDFPageAggregator, TextConverter
+from pdfminer.layout import LAParams, LTTextBox, LTTextLine, LTFigure
+from io import StringIO
+import re
+import difflib
+import fpdf
+from tkinter import Tk
+from tkinter import filedialog
+from tkinter import  messagebox
+import pandas as pd
+from pandas import ExcelWriter
+from pandas import ExcelFile
+import re
+import string
+from json import dumps
+
+#################################################################################################################################################
+############################################################# DEFINITION DES FONCTIONS ##########################################################
+#################################################################################################################################################
+
+def stringToList(string):
+    listRes = list(string.split(","))
+    return listRes
+
+def find_word(text, search):
+   result = re.findall('\\b'+search+'\\b', text, flags=re.IGNORECASE)
+   if len(result)>0:
+      return True
+   else:
+      return False
+
+def remove_control_characters(s):
+    mpa = dict.fromkeys(range(32))
+    return s.translate(mpa).replace(u'\xa0', u' ').strip()
+
+#################################################################################################################################################
+############################################################# DEFINITION DES VALEURS ############################################################
+#################################################################################################################################################
+
+root = Tk()
+root.withdraw()
+prompt_xls_location = filedialog.askdirectory(title = 'Sélectionner le dossier contenant le SCRIBE')
+
+EXCEL_DATA = prompt_xls_location + "\\SCRIBE_op_log.xlsx"
+PDFFILE_prompt = prompt_xls_location + '\\Mémoire technique.pdf'
+
+df = pd.read_excel(EXCEL_DATA,sheet_name='PY_DATA_TDM')
+df = df.dropna()
+
+toc=df['toc'].tolist()
+toc=[str(remove_control_characters(elem)) for elem in toc]
+numpage=df['numpage'].tolist()
+styles=df['styles'].tolist()
+
+#################################################################################################################################################
+############################################################ AJOUT DES LIENS ####################################################################
+#################################################################################################################################################
+
+fp = open(PDFFILE_prompt, 'rb')
+parser = PDFParser(fp)
+doc = PDFDocument(parser)
+
+rsrcmgr = PDFResourceManager()
+laparams = LAParams()
+device1 = PDFPageAggregator(rsrcmgr, laparams=laparams)
+interpreter1 = PDFPageInterpreter(rsrcmgr, device1)
+
+out = PdfFileWriter()
+pdf = PdfFileReader(open(PDFFILE_prompt, "rb"))
+num_of_pages = pdf.getNumPages()
+extract = ""
+
+for i in range(num_of_pages):
+    inside = [i]
+    pagenos=set(inside)
+    rsrcmgr = PDFResourceManager()
+    retstr = StringIO()
+    codec = 'utf-8'
+    laparams = LAParams()
+    device = TextConverter(rsrcmgr, retstr, codec=codec, laparams=laparams)
+    interpreter = PDFPageInterpreter(rsrcmgr, device)
+    password = ""
+    maxpages = 0
+    caching = True
+    text = ""
+    lookup = ""
+    
+    for page in PDFPage.get_pages(fp, pagenos, maxpages=maxpages, password=password,caching=caching, check_extractable=True):
+        out.addPage(pdf.getPage(i))
+
+for i in range(num_of_pages):
+    inside = [i]
+    pagenos=set(inside)
+    rsrcmgr = PDFResourceManager()
+    retstr = StringIO()
+    codec = 'utf-8'
+    laparams = LAParams()
+    device = TextConverter(rsrcmgr, retstr, codec=codec, laparams=laparams)
+    interpreter = PDFPageInterpreter(rsrcmgr, device)
+    password = ""
+    maxpages = 0
+    caching = True
+    text = ""
+    lookup = ""
+    
+    for page in PDFPage.get_pages(fp, pagenos, maxpages=maxpages, password=password,caching=caching, check_extractable=True):
+        interpreter.process_page(page)
+        page_count=int(str(pagenos).replace("{","").replace("}",""))
+        text = retstr.getvalue()
+        removeSpecialChars = text.translate ({ord(c): "" for c in "!¨@#$%^&*()[]{};:,./<>?\|`~-=_+\n"}).strip()
+        allpagetext=removeSpecialChars.encode('utf-8')
+        for item in toc:
+            s1=item.translate ({ord(c): "" for c in "!¨@#$%^&*()[]{};:,./<>?\|`~-=_+\n"}).strip()
+            searchkey=s1.encode('utf-8')
+            if searchkey in allpagetext:
+                page_count_2=0
+                for page in PDFPage.create_pages(doc):
+                    if page_count_2 == page_count:
+                        interpreter1.process_page(page)
+                        layout = device1.get_result()
+                        if layout is not None:
+                            for lt_obj in layout:
+                                if isinstance(lt_obj, LTTextBox) or isinstance(lt_obj, LTTextLine):
+                                    key=lt_obj.get_text()
+                                    s2=key.translate ({ord(c): "" for c in "!¨@#$%^&*()[]{};:,./<>?\|`~-=_+\n"}).strip()
+                                    mykey=s2.encode('utf-8')
+                                    if mykey==searchkey:
+                                        num=toc.index(item)
+                                        try:
+                                            out.addLink(page_count, numpage[num]-1, lt_obj.bbox, border=None, fit='/Fit')
+                                        except:
+                                            print(item)
+                    page_count_2+=1
+
+out.setPageMode("/UseOutlines")
+temp_pdf=prompt_xls_location+"\\temp_pdf.pdf"
+outputStream = open(temp_pdf,'wb')
+out.write(outputStream)
+outputStream.close()
+
+#################################################################################################################################################
+############################################################ AJOUT DES SIGNETS ##################################################################
+#################################################################################################################################################
+
+output = PdfFileWriter()
+input = PdfFileReader(open(temp_pdf, 'rb'))
+
+for n in range(0, len(toc)):
+    output.addPage(input.getPage(n))
+    if styles[n]==1:
+        parent1=output.addBookmark(toc[n], numpage[n]-1, parent=None)
+    if styles[n]==2:
+        parent2=output.addBookmark(toc[n], numpage[n]-1, parent1)
+    if styles[n]==3:
+        output.addBookmark(toc[n], numpage[n]-1, parent2)
+
+output.setPageMode("/UseOutlines")
+outputStream = open(prompt_xls_location+"\\Mémoire digital.pdf",'wb') 
+output.write(outputStream) 
+outputStream.close() 
+
+root = Tk()
+texto = Toplevel(root) 
+messagebox.showinfo("DIGIT",f"Opération réalisée avec succès, vous trouverez votre mémoire technique ici : {prompt_xls_location}.", parent=texto)
