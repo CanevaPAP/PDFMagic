@@ -10,6 +10,7 @@ from io import StringIO
 import re
 import difflib
 import fpdf
+from tkinter import *
 from tkinter import Tk
 from tkinter import filedialog
 from tkinter import  messagebox
@@ -19,6 +20,8 @@ from pandas import ExcelFile
 import re
 import string
 from json import dumps
+from difflib import get_close_matches 
+import js2py
 
 #################################################################################################################################################
 ############################################################# DEFINITION DES FONCTIONS ##########################################################
@@ -47,7 +50,7 @@ root = Tk()
 root.withdraw()
 prompt_xls_location = filedialog.askdirectory(title = 'Sélectionner le dossier contenant le SCRIBE')
 
-EXCEL_DATA = prompt_xls_location + "\\SCRIBE_op_log.xlsx"
+EXCEL_DATA = prompt_xls_location + "\\PDFMagic_op_log.xlsx"
 PDFFILE_prompt = prompt_xls_location + '\\Mémoire technique.pdf'
 
 df = pd.read_excel(EXCEL_DATA,sheet_name='PY_DATA_TDM')
@@ -57,6 +60,8 @@ toc=df['toc'].tolist()
 toc=[str(remove_control_characters(elem)) for elem in toc]
 numpage=df['numpage'].tolist()
 styles=df['styles'].tolist()
+
+############################################################## DRIVER PROGRAM ###################################################################
 
 #################################################################################################################################################
 ############################################################ AJOUT DES LIENS ####################################################################
@@ -77,22 +82,7 @@ num_of_pages = pdf.getNumPages()
 extract = ""
 
 for i in range(num_of_pages):
-    inside = [i]
-    pagenos=set(inside)
-    rsrcmgr = PDFResourceManager()
-    retstr = StringIO()
-    codec = 'utf-8'
-    laparams = LAParams()
-    device = TextConverter(rsrcmgr, retstr, codec=codec, laparams=laparams)
-    interpreter = PDFPageInterpreter(rsrcmgr, device)
-    password = ""
-    maxpages = 0
-    caching = True
-    text = ""
-    lookup = ""
-    
-    for page in PDFPage.get_pages(fp, pagenos, maxpages=maxpages, password=password,caching=caching, check_extractable=True):
-        out.addPage(pdf.getPage(i))
+    out.addPage(pdf.getPage(i))
 
 for i in range(num_of_pages):
     inside = [i]
@@ -135,7 +125,15 @@ for i in range(num_of_pages):
                                         try:
                                             out.addLink(page_count, numpage[num]-1, lt_obj.bbox, border=None, fit='/Fit')
                                         except:
-                                            print(item)
+                                            continue
+                                    else:
+                                        ans = get_close_matches(key, toc)
+                                        if len(ans)>0:
+                                            num=toc.index(ans[0])
+                                            try:
+                                                out.addLink(page_count, numpage[num]-1, lt_obj.bbox, border=None, fit='/Fit')
+                                            except:
+                                                continue
                     page_count_2+=1
 
 out.setPageMode("/UseOutlines")
@@ -149,21 +147,43 @@ outputStream.close()
 #################################################################################################################################################
 
 output = PdfFileWriter()
-input = PdfFileReader(open(temp_pdf, 'rb'))
+doc = PdfFileReader(open(temp_pdf, 'rb'))
+num_of_pages = doc.getNumPages()
 
-for n in range(0, len(toc)):
-    output.addPage(input.getPage(n))
-    if styles[n]==1:
-        parent1=output.addBookmark(toc[n], numpage[n]-1, parent=None)
-    if styles[n]==2:
-        parent2=output.addBookmark(toc[n], numpage[n]-1, parent1)
-    if styles[n]==3:
-        output.addBookmark(toc[n], numpage[n]-1, parent2)
+for n in range(0,num_of_pages):
+    output.addPage(doc.getPage(n)) 
+
+for count in range(0,len(toc)):
+    try:
+        if styles[count]==1:
+            parent1=output.addBookmark(toc[count], numpage[count]-1, parent=None)
+        elif styles[count]==2:
+            parent2=output.addBookmark(toc[count], numpage[count]-1, parent1)
+        elif styles[count]==3:
+            output.addBookmark(toc[count], numpage[count]-1, parent2)
+    except:
+        continue
 
 output.setPageMode("/UseOutlines")
 outputStream = open(prompt_xls_location+"\\Mémoire digital.pdf",'wb') 
 output.write(outputStream) 
 outputStream.close() 
+
+#################################################################################################################################################
+############################################################ MODELISATION DES PAGES #############################################################
+#################################################################################################################################################
+
+#f = js2py.eval_js( “CODE JS” )
+# or f = js2py.eval_js6(js6_code)
+#f("Variable si besoin")
+
+#################################################################################################################################################
+############################################################ AJOUT DU RUBAN JS  #################################################################
+#################################################################################################################################################
+
+#f = js2py.eval_js( “CODE JS” )
+# or f = js2py.eval_js6(js6_code)
+#f("Variable si besoin")
 
 root = Tk()
 texto = Toplevel(root) 
